@@ -4,47 +4,51 @@
 #include <fmgr.h>
 #include <utils/array.h>
 #include <catalog/pg_type.h>
+#include "util.c"
 
 PG_MODULE_MAGIC;
 
-Datum min_max_val(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(min_max_val);
+Datum array_to_min_max(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(array_to_min_max);
 
-
+/**
+ * Returns a min and max from an (unsorted) array of numbers.
+ * by Paul A. Jungwirth
+ */
 Datum
-min_max_val(PG_FUNCTION_ARGS)
+array_to_min_max(PG_FUNCTION_ARGS)
 {
-  
+  // Our arguments:
   ArrayType *vals;
 
-  
-  Oid valueType;
+  // The array element type:
+  Oid valsType;
 
   // The array element type widths for our input array:
-  int valueTypeWidth;
-  int returnTypeWidth;
+  int16 valsTypeWidth;
+  int16 retTypeWidth;
 
   // The array element type "is passed by value" flags:
-  bool valueTypeByValue;
-  bool returnTypeByValue;
+  bool valsTypeByValue;
+  bool retTypeByValue;
 
   // The array element type alignment codes:
   char valsTypeAlignmentCode;
   char retTypeAlignmentCode;
 
   // The array contents, as PostgreSQL "Datum" objects:
-  Datum *valueContent;
-  Datum returnContent[2];
-  bool returnNulls[2] = {true, true};
+  Datum *valsContent;
+  Datum retContent[2];
+  bool retNulls[2] = {true, true};
 
   // List of "is null" flags for the array contents:
-  bool *valueNullFlags;
+  bool *valsNullFlags;
 
   // The size of the input array:
-  int valueLength;
+  int valsLength;
 
   // The output array:
-  ArrayType* returnArray;
+  ArrayType* retArray;
 
   bool resultIsNull = true;
   int i;
@@ -52,129 +56,141 @@ min_max_val(PG_FUNCTION_ARGS)
   int dims[1];
   int lbs[1];     // Lower Bounds of each dimension
 
-  vals = PG_GETARG_ARRAYTYPE_P(0);
-
-  
-  // Determine the array element types.
-  valueType = ARR_ELEMTYPE(vals);
-
-  if (valueType != INT2OID &&
-      valueType != INT4OID &&
-      valueType != INT8OID &&
-      valueType != FLOAT4OID &&
-      valueType != FLOAT8OID) {
-    ereport(ERROR, (errmsg("Input values  must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE ")));
+  if (PG_ARGISNULL(0)) {
+    ereport(ERROR, (errmsg("Null arrays not accepted")));
   }
 
-  valueLength = (ARR_DIMS(vals))[0];
+  vals = PG_GETARG_ARRAYTYPE_P(0);
 
-  get_typlenbyvalalign(valueType, &valueTypeWidth, &valueTypeByValue, &valsTypeAlignmentCode);
+  if (ARR_NDIM(vals) == 0) {
+    PG_RETURN_NULL();
+  }
+  if (ARR_NDIM(vals) > 1) {
+    ereport(ERROR, (errmsg("One-dimesional arrays are required")));
+  }
+
+  // Determine the array element types.
+  valsType = ARR_ELEMTYPE(vals);
+
+  if (valsType != INT2OID &&
+      valsType != INT4OID &&
+      valsType != INT8OID &&
+      valsType != FLOAT4OID &&
+      valsType != FLOAT8OID) {
+    ereport(ERROR, (errmsg("Minmax subject must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
+  }
+
+  valsLength = (ARR_DIMS(vals))[0];
+
+  get_typlenbyvalalign(valsType, &valsTypeWidth, &valsTypeByValue, &valsTypeAlignmentCode);
 
   // Extract the array contents (as Datum objects).
-  deconstruct_array(vals, valueType, valueTypeWidth, valueTypeByValue, valsTypeAlignmentCode,
-&valueContent, &valueNullFlags, &valueLength);
+  deconstruct_array(vals, valsType, valsTypeWidth, valsTypeByValue, valsTypeAlignmentCode,
+&valsContent, &valsNullFlags, &valsLength);
 
-  if (valueLength == 0) PG_RETURN_NULL();
+  if (valsLength == 0) PG_RETURN_NULL();
 
   // Compute the max.
 
-  switch (valueType) {
+  switch (valsType) {
     case INT2OID:
-      for (i = 0; i < valueLength; i++) {
-        if (valueNullFlags[i]) {
+      for (i = 0; i < valsLength; i++) {
+        if (valsNullFlags[i]) {
           continue;
         } else if (resultIsNull) {
-          minV.i16 = DatumGetInt16(valueContent[i]);
-          maxV.i16 = DatumGetInt16(valueContent[i]);
+          minV.i16 = DatumGetInt16(valsContent[i]);
+          maxV.i16 = DatumGetInt16(valsContent[i]);
           resultIsNull = false;
         } else {
-          if (DatumGetInt16(valueContent[i]) < minV.i16) minV.i16 = DatumGetInt16(valueContent[i]);
-          if (DatumGetInt16(valueContent[i]) > maxV.i16) maxV.i16 = DatumGetInt16(valueContent[i]);
+          if (DatumGetInt16(valsContent[i]) < minV.i16) minV.i16 = DatumGetInt16(valsContent[i]);
+          if (DatumGetInt16(valsContent[i]) > maxV.i16) maxV.i16 = DatumGetInt16(valsContent[i]);
         }
       }
-      returnContent[0] = Int16GetDatum(minV.i16);
-      returnContent[1] = Int16GetDatum(maxV.i16);
-      get_typlenbyvalalign(INT2OID, &returnTypeWidth, &returnTypeByValue, &retTypeAlignmentCode);
+      retContent[0] = Int16GetDatum(minV.i16);
+      retContent[1] = Int16GetDatum(maxV.i16);
+      get_typlenbyvalalign(INT2OID, &retTypeWidth, &retTypeByValue, &retTypeAlignmentCode);
       break;
     case INT4OID:
-      for (i = 0; i < valueLength; i++) {
-        if (valueNullFlags[i]) {
+      for (i = 0; i < valsLength; i++) {
+        if (valsNullFlags[i]) {
           continue;
         } else if (resultIsNull) {
-          minV.i32 = DatumGetInt32(valueContent[i]);
-          maxV.i32 = DatumGetInt32(valueContent[i]);
+          minV.i32 = DatumGetInt32(valsContent[i]);
+          maxV.i32 = DatumGetInt32(valsContent[i]);
           resultIsNull = false;
         } else {
-          if (DatumGetInt32(valueContent[i]) < minV.i32) minV.i32 = DatumGetInt32(valueContent[i]);
-          if (DatumGetInt32(valueContent[i]) > maxV.i32) maxV.i32 = DatumGetInt32(valueContent[i]);
+          if (DatumGetInt32(valsContent[i]) < minV.i32) minV.i32 = DatumGetInt32(valsContent[i]);
+          if (DatumGetInt32(valsContent[i]) > maxV.i32) maxV.i32 = DatumGetInt32(valsContent[i]);
         }
       }
-      returnContent[0] = Int32GetDatum(minV.i32);
-      returnContent[1] = Int32GetDatum(maxV.i32);
-      get_typlenbyvalalign(INT4OID, &returnTypeWidth, &returnTypeByValue, &retTypeAlignmentCode);
+      retContent[0] = Int32GetDatum(minV.i32);
+      retContent[1] = Int32GetDatum(maxV.i32);
+      get_typlenbyvalalign(INT4OID, &retTypeWidth, &retTypeByValue, &retTypeAlignmentCode);
       break;
     case INT8OID:
-      for (i = 0; i < valueLength; i++) {
-        if (valueNullFlags[i]) {
+      for (i = 0; i < valsLength; i++) {
+        if (valsNullFlags[i]) {
           continue;
         } else if (resultIsNull) {
-          minV.i64 = DatumGetInt64(valueContent[i]);
-          maxV.i64 = DatumGetInt64(valueContent[i]);
+          minV.i64 = DatumGetInt64(valsContent[i]);
+          maxV.i64 = DatumGetInt64(valsContent[i]);
           resultIsNull = false;
         } else {
-          if (DatumGetInt64(valueContent[i]) < minV.i64) minV.i64 = DatumGetInt64(valueContent[i]);
-          if (DatumGetInt64(valueContent[i]) > maxV.i64) maxV.i64 = DatumGetInt64(valueContent[i]);
+          if (DatumGetInt64(valsContent[i]) < minV.i64) minV.i64 = DatumGetInt64(valsContent[i]);
+          if (DatumGetInt64(valsContent[i]) > maxV.i64) maxV.i64 = DatumGetInt64(valsContent[i]);
         }
       }
-      returnContent[0] = Int64GetDatum(minV.i64);
-      returnContent[1] = Int64GetDatum(maxV.i64);
-      get_typlenbyvalalign(INT8OID, &returnTypeWidth, &returnTypeByValue, &retTypeAlignmentCode);
+      retContent[0] = Int64GetDatum(minV.i64);
+      retContent[1] = Int64GetDatum(maxV.i64);
+      get_typlenbyvalalign(INT8OID, &retTypeWidth, &retTypeByValue, &retTypeAlignmentCode);
       break;
     case FLOAT4OID:
-      for (i = 0; i < valueLength; i++) {
-        if (valueNullFlags[i]) {
+      for (i = 0; i < valsLength; i++) {
+        if (valsNullFlags[i]) {
           continue;
         } else if (resultIsNull) {
-          minV.f4 = DatumGetFloat4(valueContent[i]);
-          maxV.f4 = DatumGetFloat4(valueContent[i]);
+          minV.f4 = DatumGetFloat4(valsContent[i]);
+          maxV.f4 = DatumGetFloat4(valsContent[i]);
           resultIsNull = false;
         } else {
-          if (DatumGetFloat4(valueContent[i]) < minV.f4) minV.f4 = DatumGetFloat4(valueContent[i]);
-          if (DatumGetFloat4(valueContent[i]) > maxV.f4) maxV.f4 = DatumGetFloat4(valueContent[i]);
+          if (DatumGetFloat4(valsContent[i]) < minV.f4) minV.f4 = DatumGetFloat4(valsContent[i]);
+          if (DatumGetFloat4(valsContent[i]) > maxV.f4) maxV.f4 = DatumGetFloat4(valsContent[i]);
         }
       }
-      returnContent[0] = Float4GetDatum(minV.f4);
-      returnContent[1] = Float4GetDatum(maxV.f4);
-      get_typlenbyvalalign(FLOAT4OID, &returnTypeWidth, &returnTypeByValue, &retTypeAlignmentCode);
+      retContent[0] = Float4GetDatum(minV.f4);
+      retContent[1] = Float4GetDatum(maxV.f4);
+      get_typlenbyvalalign(FLOAT4OID, &retTypeWidth, &retTypeByValue, &retTypeAlignmentCode);
       break;
     case FLOAT8OID:
-      for (i = 0; i < valueLength; i++) {
-        if (valueNullFlags[i]) {
+      for (i = 0; i < valsLength; i++) {
+        if (valsNullFlags[i]) {
           continue;
         } else if (resultIsNull) {
-          minV.f8 = DatumGetFloat8(valueContent[i]);
-          maxV.f8 = DatumGetFloat8(valueContent[i]);
+          minV.f8 = DatumGetFloat8(valsContent[i]);
+          maxV.f8 = DatumGetFloat8(valsContent[i]);
           resultIsNull = false;
         } else {
-          if (DatumGetFloat8(valueContent[i]) < minV.f8) minV.f8 = DatumGetFloat8(valueContent[i]);
-          if (DatumGetFloat8(valueContent[i]) > maxV.f8) maxV.f8 = DatumGetFloat8(valueContent[i]);
+          if (DatumGetFloat8(valsContent[i]) < minV.f8) minV.f8 = DatumGetFloat8(valsContent[i]);
+          if (DatumGetFloat8(valsContent[i]) > maxV.f8) maxV.f8 = DatumGetFloat8(valsContent[i]);
         }
       }
-      returnContent[0] = Float8GetDatum(minV.f8);
-      returnContent[1] = Float8GetDatum(maxV.f8);
-      get_typlenbyvalalign(FLOAT8OID, &returnTypeWidth, &returnTypeByValue, &retTypeAlignmentCode);
+      retContent[0] = Float8GetDatum(minV.f8);
+      retContent[1] = Float8GetDatum(maxV.f8);
+      get_typlenbyvalalign(FLOAT8OID, &retTypeWidth, &retTypeByValue, &retTypeAlignmentCode);
       break;
     default:
-      ereport(ERROR, (errmsg("Input values must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE ")));
+      ereport(ERROR, (errmsg("Minmax subject must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
   }
 
   lbs[0] = 1;
   dims[0] = 2;
   if (!resultIsNull) {
-    returnNulls[0] = false;
-    returnNulls[1] = false;
+    retNulls[0] = false;
+    retNulls[1] = false;
   }
-  returnArray = construct_md_array(returnContent, returnNulls, 1, dims, lbs, valueType, returnTypeWidth, returnTypeByValue, retTypeAlignmentCode);
+  retArray = construct_md_array(retContent, retNulls, 1, dims, lbs, valsType, retTypeWidth, retTypeByValue, retTypeAlignmentCode);
 
-  PG_RETURN_ARRAYTYPE_P(returnArray);
+  PG_RETURN_ARRAYTYPE_P(retArray);
 }
+
+

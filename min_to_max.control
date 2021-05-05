@@ -1,5 +1,5 @@
 # min_to_max postgresql extension
 comment = 'find min and max number for postgres extension using c'
 default_version = '0.0.1'
-module_pathname = '$libdir/min_to_max'
+module_pathname = '$libdir/pgsql/min_to_max'
 relocatable = true

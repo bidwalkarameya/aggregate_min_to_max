@@ -1,11 +1,13 @@
-CREATE OR REPLACE FUNCTION 
-min_max_val(anyarray)
+CREATE OR REPLACE FUNCTION
+array_to_min_max(anyarray)
 RETURNS anyarray
-AS 'min_to_max', 'min_to_max'
+AS 'MODULE_PATHNAME', 'array_to_min_max'
 LANGUAGE c IMMUTABLE;
 
-create aggregate min_to_max()
+create aggregate min_to_max(anyarray)
 (
-    sfunc = min_max_value,
-    stype = anyarray
-);
+    sfunc = array_to_min_max,
+    stype = anyarray,
+        initcond = '');
+
+
