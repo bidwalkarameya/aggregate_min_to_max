@@ -11,10 +11,7 @@ PG_MODULE_MAGIC;
 Datum array_to_min_max(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(array_to_min_max);
 
-/**
- * Returns a min and max from an (unsorted) array of numbers.
- * by Paul A. Jungwirth
- */
+
 Datum
 array_to_min_max(PG_FUNCTION_ARGS)
 {
