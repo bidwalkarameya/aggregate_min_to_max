@@ -1,6 +1,6 @@
 # aggregate_min_to_max
 
-This Postgres extension provides function to find min and max value minimum and maximum values of that column.
+This Postgres extension provides function to find  minimum and maximum values of that column.
 
 Installing
 
